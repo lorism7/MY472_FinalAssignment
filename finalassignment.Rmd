@@ -1,0 +1,194 @@
+---
+title: "Assignment4"
+output: html_document
+date: "2023-12-11"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## R Markdown
+
+```{r data}
+
+# Load necessary libraries
+library(readr)
+library(dplyr)
+
+# File paths for each dataset
+files <- c("2022-12-city-of-london-stop-and-search.csv",
+           "2023-01-city-of-london-stop-and-search.csv",
+           "2023-02-city-of-london-stop-and-search.csv",
+    "2023-03-city-of-london-stop-and-search.csv",
+    "2023-04-city-of-london-stop-and-search.csv",
+    "2023-05-city-of-london-stop-and-search.csv",
+    "2023-06-city-of-london-stop-and-search.csv",
+    "2023-07-city-of-london-stop-and-search.csv",
+    "2023-08-city-of-london-stop-and-search.csv",
+    "2023-09-city-of-london-stop-and-search.csv",
+    "2023-10-city-of-london-stop-and-search.csv",
+    "2023-11-city-of-london-stop-and-search.csv"
+)
+
+# Function to read and combine CSV files
+read_and_combine <- function(file_paths) {
+    dfs <- lapply(file_paths, read_csv)
+    combined_df <- bind_rows(dfs)
+    return(combined_df)
+}
+
+# Read and combine data
+combined_data <- read_and_combine(files)
+
+# Inspect the first few rows of the combined data
+head(combined_data)
+
+colnames(combined_data)
+
+
+# Remove columns with all missing values
+cleaned_data <- combined_data %>% 
+                select(-c("Part of a policing operation", "Policing operation"))
+
+# Removing rows with missing values in 'Age range' and 'Officer-defined ethnicity'
+cleaned_data <- na.omit(cleaned_data, cols = c("Age range", "Officer-defined ethnicity"))
+
+# Convert 'Date' column to datetime format
+cleaned_data$Date <- as.Date(cleaned_data$Date)
+
+# Check for missing values
+sum(is.na(cleaned_data))
+
+# Analysis of Gender Distribution
+gender_distribution <- table(cleaned_data$Gender)
+
+# Analysis of Age Range Distribution
+age_distribution <- table(cleaned_data$"Age range")
+
+# Analysis of Ethnicity Distribution
+ethnicity_distribution <- table(cleaned_data$"Officer-defined ethnicity")
+
+# Print the distributions
+gender_distribution
+age_distribution
+ethnicity_distribution
+
+library(caret)
+library(nnet) 
+
+# Convert 'Outcome linked to object of search' to binary (1 for false arrest, 0 otherwise)
+cleaned_data$False_Arrest <- ifelse(cleaned_data$`Outcome linked to object of search` == "False", 1, 0)
+
+# Convert categorical predictors to factors
+cleaned_data$Gender <- as.factor(cleaned_data$Gender)
+cleaned_data$`Age range` <- as.factor(cleaned_data$`Age range`)
+cleaned_data$`Self-defined ethnicity` <- as.factor(cleaned_data$`Self-defined ethnicity`)
+cleaned_data$`Object of search` <- as.factor(cleaned_data$`Object of search`)
+
+# Creating dummy variables for 'Object of Search' categories
+dummy_vars <- model.matrix(~ `Object of search` - 1, data = cleaned_data)
+
+# Combine dummy variables with the original data
+cleaned_data <- cbind(cleaned_data, dummy_vars)
+
+# Run logistic regression with fixed effects for 'Object of Search'
+model <- glm(False_Arrest ~ Gender + `Age range` + `Self-defined ethnicity` + `Object of search`,
+             data = cleaned_data, family = "binomial")
+
+# Summary of the model
+summary(model)
+
+
+```
+
+```{r trying}
+library(httr)
+library(jsonlite)
+
+forces <- c("avon-and-somerset", "bedfordshire", "btp", "cambridgeshire", "cheshire", 
+            "city-of-london", "cleveland", "cumbria", "derbyshire", "devon-and-cornwall", 
+            "dorset", "durham", "dyfed-powys", "essex", "gloucestershire", "gmp", "gwent", 
+            "hampshire", "hertfordshire", "humberside", "kent", "lancashire", "leicestershire", 
+            "lincolnshire", "merseyside", "metropolitan", "norfolk", "north-wales", 
+            "north-yorkshire", "northamptonshire", "northumbria", "nottinghamshire", "psni", 
+            "south-wales", "south-yorkshire", "staffordshire", "suffolk", "surrey", 
+            "sussex", "thames-valley", "warwickshire", "west-mercia", "west-midlands", 
+            "west-yorkshire", "wiltshire")
+
+# Rest of your data processing steps...
+
+all_data <- list()
+
+start_date <- as.Date("2022-12-01T00:00:00+00:00")
+end_date <- as.Date("2023-11-01T00:00:00+00:00")
+date_seq <- seq(start_date, end_date, by="month")
+for (force in forces) {
+    url <- paste0("https://data.police.uk/api/stops-force?force=", force)
+    response <- GET(url)
+    if (status_code(response) == 200) {
+      data <- fromJSON(content(response, "text", encoding = "UTF-8"), flatten = TRUE)
+      all_data[[force]] <- data
+    } else {
+      warning("Failed to retrieve data for ", force)
+    }
+  }
+
+
+# Filter out empty data frames from all_data
+all_data <- Filter(function(df) is.data.frame(df) && nrow(df) > 0, all_data)
+
+# Identify all unique column names across all data frames
+all_columns <- unique(unlist(lapply(all_data, colnames)))
+
+# Define the columns to keep
+columns_to_keep <- c("age_range", "gender", "datetime", "officer_defined_ethnicity", 
+                     "type", "outcome_linked_to_object_of_search", "location.latitude", 
+                     "location.longitude", "location.street.id", "location.street.name", "force")
+
+
+# Initialize an empty dataframe
+combined_data <- data.frame(matrix(ncol = length(columns_to_keep), nrow = 0))
+colnames(combined_data) <- columns_to_keep
+
+
+# Adjust each data frame to have the same columns and add the force name
+for (force in names(all_data)) {
+  # Initialize a data frame with all required columns, filled with NA
+  standardized_df <- data.frame(matrix(NA, ncol = length(columns_to_keep), nrow = nrow(all_data[[force]])))
+  colnames(standardized_df) <- columns_to_keep
+
+  # For each column in columns_to_keep, fill the standardized data frame with the actual data if it exists
+  for (col in columns_to_keep) {
+    if (col %in% colnames(all_data[[force]])) {
+      standardized_df[[col]] <- all_data[[force]][[col]]
+    }
+  }
+  
+  # Add the force name to the 'force' column
+  standardized_df$force <- force
+  
+  # Replace the original data frame with the standardized one
+  all_data[[force]] <- standardized_df
+}
+
+
+combined_data <- do.call(rbind, all_data)
+
+# Ensure unique row names
+rownames(combined_data) <- NULL
+
+# Check the structure of the combined data
+str(combined_data)
+
+# Handle Missing Values
+combined_data <- na.omit(combined_data)
+
+# Convert 'datetime' to Date format
+combined_data$datetime <- as.Date(combined_data$datetime, format="%Y-%m-%dT%H:%M:%S") 
+# Get a summary of the datetime column
+datetime_summary <- summary(combined_data$datetime)
+
+
+
+```
