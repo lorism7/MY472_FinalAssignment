@@ -198,3 +198,53 @@ combined_data$datetime <- as.Date(combined_data$datetime, format="%Y-%m-%dT%H:%M
 datetime_summary <- summary(combined_data$datetime)
 
 ```
+
+```{r making a map}
+# Assuming you have a dataframe named combined_data
+combined_data$location.latitude <- as.numeric(combined_data$location.latitude)
+combined_data$location.longitude <- as.numeric(combined_data$location.longitude)
+
+library(ggplot2)
+library(sf)
+library(dplyr)
+
+stop_search_data_sf <- st_as_sf(combined_data, coords = c("location.longitude", "location.latitude"), crs = 4326, agr = "constant")
+
+uk_map <- ggplot() + 
+  borders("world", xlim = c(-10, 8), ylim = c(49,61), fill = "white", colour = "black") # Adjust xlim and ylim for UK
+
+
+map_with_stops <- uk_map + 
+  geom_sf(data = stop_search_data_sf, aes(color = officer_defined_ethnicity)) +
+  theme_minimal() +
+  labs(color = 'Officer Defined Ethnicity', title = 'Stop-and-Search Incidents in the UK')
+
+
+```
+
+```{r try try try}
+library(sf)
+library(ggplot2)
+library(dplyr)
+
+uk_shape <- st_read('ne_10m_admin_0_countries/ne_10m_admin_0_countries.shp')
+
+uk <- uk_shape %>% 
+  filter(ADMIN == "United Kingdom")
+
+ggplot(data = uk) +
+  geom_sf() +
+  theme_minimal()
+
+stop_search_data_sf <- st_as_sf(combined_data, coords = c("location.longitude", "location.latitude"), crs = 4326, agr = "constant")
+
+map <- ggplot() +
+  geom_sf(data = uk) +
+  geom_sf(data = stop_search_data_sf, aes(color = officer_defined_ethnicity)) +
+  theme_minimal() +
+  labs(color = 'Officer Defined Ethnicity')
+
+
+```
+
+
