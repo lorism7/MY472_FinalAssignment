@@ -105,6 +105,7 @@ summary(model)
 ```{r trying}
 library(httr)
 library(jsonlite)
+library(lubridate)
 
 forces <- c("avon-and-somerset", "bedfordshire", "btp", "cambridgeshire", "cheshire", 
             "city-of-london", "cleveland", "cumbria", "derbyshire", "devon-and-cornwall", 
@@ -116,24 +117,31 @@ forces <- c("avon-and-somerset", "bedfordshire", "btp", "cambridgeshire", "chesh
             "sussex", "thames-valley", "warwickshire", "west-mercia", "west-midlands", 
             "west-yorkshire", "wiltshire")
 
-# Rest of your data processing steps...
+date_seq <- c("2022-12", "2023-01", "2023-02", "2023-03", "2023-04", "2023-05",
+                "2023-06", "2023-07", "2023-08", "2023-09", "2023-10", "2023-11")
+
 
 all_data <- list()
 
-start_date <- as.Date("2022-12-01T00:00:00+00:00")
-end_date <- as.Date("2023-11-01T00:00:00+00:00")
-date_seq <- seq(start_date, end_date, by="month")
 for (force in forces) {
-    url <- paste0("https://data.police.uk/api/stops-force?force=", force)
-    response <- GET(url)
-    if (status_code(response) == 200) {
-      data <- fromJSON(content(response, "text", encoding = "UTF-8"), flatten = TRUE)
-      all_data[[force]] <- data
-    } else {
-      warning("Failed to retrieve data for ", force)
-    }
-  }
+    # Initialize a list for each force
+    force_data <- list()
 
+    for (date in date_seq) {
+        url <- paste0("https://data.police.uk/api/stops-force?force=", force, "&date=", date)
+        response <- GET(url)
+        if (status_code(response) == 200) {
+            data <- fromJSON(content(response, "text", encoding = "UTF-8"), flatten = TRUE)
+            # Append the data to the force_data list
+            force_data[[date]] <- data
+        } else {
+            warning("Failed to retrieve data for ", force, " for date ", date)
+        }
+    }
+
+    # Combine the data for all months for the force
+    all_data[[force]] <- do.call(rbind, force_data)
+}
 
 # Filter out empty data frames from all_data
 all_data <- Filter(function(df) is.data.frame(df) && nrow(df) > 0, all_data)
@@ -188,7 +196,5 @@ combined_data <- na.omit(combined_data)
 combined_data$datetime <- as.Date(combined_data$datetime, format="%Y-%m-%dT%H:%M:%S") 
 # Get a summary of the datetime column
 datetime_summary <- summary(combined_data$datetime)
-
-
 
 ```
